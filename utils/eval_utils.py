@@ -2,10 +2,12 @@ import copy
 
 import torch
 
-from .chamfer import chamfer_distance
+# from .chamfer import chamfer_distance
+
 from .loss import _valid_mean
 from .transforms import transform_pc
 
+from pytorch3d.loss import chamfer_distance
 
 @torch.no_grad()
 def calc_part_acc(pts, trans1, trans2, rot1, rot2, valids, ret_cd=False):
@@ -33,8 +35,9 @@ def calc_part_acc(pts, trans1, trans2, rot1, rot2, valids, ret_cd=False):
 
     pts1 = pts1.flatten(0, 1)  # [B*P, N, 3]
     pts2 = pts2.flatten(0, 1)
-    dist1, dist2 = chamfer_distance(pts1, pts2)  # [B*P, N]
-    loss_per_data = torch.mean(dist1, dim=1) + torch.mean(dist2, dim=1)
+    # dist1, dist2 = chamfer_distance(pts1, pts2)  # [B*P, N]
+    # loss_per_data = torch.mean(dist1, dim=1) + torch.mean(dist2, dim=1)
+    loss_per_data, _ = chamfer_distance(pts1, pts2, batch_reduction=None)  # [B*P]
     loss_per_data = loss_per_data.view(B, P).type_as(pts)
 
     # part with CD < `thre` is considered correct

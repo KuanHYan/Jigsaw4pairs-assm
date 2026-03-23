@@ -3,12 +3,14 @@ import open3d as o3d
 import torch
 
 from scipy.spatial.transform import Rotation as R
-import numpy as np
+
 from .utils import lexico_iter
 from .global_alignment import global_alignment
 
 
-def estimate_global_transform(perm_mat, part_pcs, n_valid, n_pcs, n_critical_pcs, critical_pcs_idx, part_quat, part_trans, align_pivot=True):
+def estimate_global_transform(perm_mat, part_pcs, n_valid, n_pcs,
+                              n_critical_pcs, critical_pcs_idx,
+                              part_quat, part_trans, align_pivot=True):
     """
     Estimate global transformation based on the matching and points.
     Align to the largest piece if `align_pivot` is True.

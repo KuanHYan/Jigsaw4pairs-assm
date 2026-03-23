@@ -1,4 +1,4 @@
-from .chamfer import chamfer_distance
+# from .chamfer import chamfer_distance
 from .color import COLOR
 from .critical_pcs import get_critical_pcs_from_label
 from .estimate_transform import get_trans_from_mat, estimate_global_transform

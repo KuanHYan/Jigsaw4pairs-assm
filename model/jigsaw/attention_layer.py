@@ -205,13 +205,7 @@ class PointTransformerLayer(nn.Module):
         # [N, k, C]
         p_r, x_k = x_k[:, :, :3], x_k[:, :, 3:]
         p_r = self.linear_p(p_r)
-        r_qk = (
-                x_k
-                - x_q.unsqueeze(1)
-                + einops.reduce(
-            p_r, "n ns (i j) -> n ns j", reduction="sum", j=self.mid_feat
-        )
-        )
+        r_qk = x_k - x_q.unsqueeze(1) + einops.reduce(p_r, "n ns (i j) -> n ns j", reduction="sum", j=self.mid_feat)
         w = self.linear_w(r_qk)
         w = self.softmax(w)
         x = torch.einsum(
@@ -238,6 +232,6 @@ if __name__ == "__main__":
     print(x_pnf.shape)
 
     cross_attention_layer = CrossAttentionLayer(d_in=6, n_head=2)
-    x = torch.randn(3, 4, 6)
-    x_ca = cross_attention_layer(x)
+    # x = torch.randn(3, 4, 6)
+    x_ca = cross_attention_layer(x_pnf.view(b.shape[0], -1, x.shape[-1]))
     print(x_ca.shape)
