@@ -77,3 +77,39 @@ __C.BREAKING_BAD.COLORS = [
     [76, 178, 76],
     [178, 76, 76],
 ]
+
+# custom dataset cfg
+__C.CUSTOM = edict()
+__C.CUSTOM.DATA_DIR = ""
+__C.CUSTOM.DATA_FN = "{}_valid_pcs_list.txt"
+__C.CUSTOM.NUM_PC_POINTS = 5000
+__C.CUSTOM.MIN_PART_POINT = (30)
+__C.CUSTOM.MIN_NUM_PART = 2
+__C.CUSTOM.MAX_NUM_PART = 20
+__C.CUSTOM.SHUFFLE_PARTS = False
+__C.CUSTOM.ROT_RANGE = -1
+__C.CUSTOM.OVERFIT = -1
+__C.CUSTOM.LENGTH = -1
+__C.CUSTOM.TEST_LENGTH = -1
+__C.CUSTOM.FRACTURE_LABEL_THRESHOLD = 0.0025
+__C.CUSTOM.CATEGORY = ""  # empty means all categories
+__C.CUSTOM.ALL_CATEGORY = [
+    "CYL_HOLE_out",
+    "CYL_HOLE_in",
+    "CUBE_HOLE_out",
+    "CUBE_HOLE_in",
+    "SLOT_out",
+    "SLOT_in",
+]  # Only used for custom dataset
+__C.CUSTOM.COLORS = [
+    [0, 204, 0],
+    [204, 0, 0],
+    [0, 0, 204],
+    [127, 127, 0],
+    [127, 0, 127],
+    [0, 127, 127],
+]
+__C.CUSTOM.SUBSET = ""  # must in ['factory', 'everyday', 'other']
+# 以下Key为了兼容原代码，实际不使用
+__C.CUSTOM.SAMPLE_BY = "area"
+__C.CUSTOM.DATA_KEYS = ("part_ids",)

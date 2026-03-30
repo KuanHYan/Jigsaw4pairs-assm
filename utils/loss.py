@@ -23,7 +23,7 @@ def _valid_mean(loss_per_part, valids):
     return loss_per_data
 
 
-def permutation_loss(pred_mat, gt_mat, src_ns, tgt_ns):
+def permutation_loss(pred_mat, gt_mat, src_ns, tgt_ns, logitic_mat=None):
     """
     Permutation loss
     $$L_mat = -\frac{1}{N} {\sum_{1\leq i j \leq N} x_{ij}^{gt} \log \hat{x}_{ij}^{gt} + (1-x_{ij}^{gt}) \log (1-\hat{x}_{ij}^{gt})}$$
@@ -34,21 +34,25 @@ def permutation_loss(pred_mat, gt_mat, src_ns, tgt_ns):
     @return: L_mat
     """
     batch_num = pred_mat.shape[0]
-
-    pred_dsmat = pred_mat.to(dtype=torch.float32)
+    if logitic_mat is not None:
+        loss_func = F.binary_cross_entropy_with_logits
+        pred_dsmat = logitic_mat
+    else:
+        loss_func = F.binary_cross_entropy
+        pred_dsmat = pred_mat.to(dtype=torch.float32)
 
     try:
-        assert torch.all((pred_dsmat >= 0) * (pred_dsmat <= 1))
+        assert torch.all((pred_mat >= 0) * (pred_mat <= 1))
         assert torch.all((gt_mat >= 0) * (gt_mat <= 1))
     except AssertionError as err:
-        print(pred_dsmat)
+        print(pred_mat)
         raise err
 
     loss = torch.tensor(0.0).to(pred_dsmat.device)
     n_sum = torch.zeros_like(loss)
     for b in range(batch_num):
         batch_slice = [b, slice(src_ns[b]), slice(tgt_ns[b])]
-        loss += F.binary_cross_entropy(
+        loss += loss_func(
             pred_dsmat[batch_slice], gt_mat[batch_slice], reduction="sum"
         )
         n_sum += src_ns[b].to(n_sum.dtype).to(pred_dsmat.device)

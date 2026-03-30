@@ -48,6 +48,7 @@ class MatchingBaseModel(pytorch_lightning.LightningModule):
         return loss_dict['loss']
 
     def validation_step(self, data_dict, batch_idx):
+        torch.cuda.empty_cache()
         loss_dict = self.forward_pass(data_dict, mode='val', optimizer_idx=-1)
         return loss_dict
 
@@ -289,3 +290,9 @@ class MatchingBaseModel(pytorch_lightning.LightningModule):
                 }],
             )
         return optimizer
+
+    # # This method is called after the optimizer step. Only used for debugging
+    # def on_after_backward(self):
+    #     """Called after loss.backward() and before optimizers are stepped."""
+    #     self.print(torch.cuda.memory_summary(device=self.device.index, abbreviated=False))
+    #     raise NotImplementedError

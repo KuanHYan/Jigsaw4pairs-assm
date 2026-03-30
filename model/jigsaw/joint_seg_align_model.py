@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as fun
+from torch.cuda.amp import autocast
 import torchmetrics
 from torch import nn
-
 from model import MatchingBaseModel, build_encoder
 from utils import Sinkhorn, hungarian
 from utils import get_batch_length_from_part_points, square_distance
@@ -52,6 +52,28 @@ class JointSegmentationAlignmentModel(MatchingBaseModel):
             # default: True. The mask is not needed based on the design of the primal-dual descriptor.
             print("No mask for s in test.")
 
+    def on_train_start(self) -> None:
+        res = super().on_train_start()
+        if self.train:
+            print(f"load checkpoint and update loss weight, if current epoch {self.current_epoch} > config epoch")
+            self._update_loss_weight_by_epoch(self.current_epoch + 1) # resumed_epoch
+        return res
+
+    # def on_train_epoch_start(self) -> None:
+    #     # self.trainer.current_epoch 从 0 开始计数
+    #     if self.trainer.current_epoch < 1:
+    #         # 在预热阶段，强制使用 FP32
+    #         if self.trainer.precision != 32:
+    #             print(f"Epoch {self.trainer.current_epoch}: Switching to FP32 for stability.")
+    #             self.trainer.precision = 32
+    #             self.trainer.precision_plugin
+    #     else:
+    #         # 预热结束后，切换到 FP16 混合精度
+    #         if self.trainer.precision != 16:
+    #             print(f"Epoch {self.trainer.current_epoch}: Switching to FP16 for speed.")
+    #             self.trainer.precision = 16
+    #     return super().on_train_epoch_start()
+
     def _init_encoder(self):
         in_feat_dim = 3
         encoder = build_encoder(
@@ -94,8 +116,14 @@ class JointSegmentationAlignmentModel(MatchingBaseModel):
         return affinity_layer
 
     def _init_sinkhorn(self):
+        # if self.cfg.FP16:
+        #     self.logitic_sinkhorn = True
+        # else:
+        self.logitic_sinkhorn = False
         return Sinkhorn(
-            max_iter=self.cfg.MODEL.SINKHORN_MAXITER, tau=self.cfg.MODEL.SINKHORN_TAU
+            max_iter=self.cfg.MODEL.SINKHORN_MAXITER,
+            tau=self.cfg.MODEL.SINKHORN_TAU,
+            use_logitic=self.logitic_sinkhorn,
         )
 
     def _extract_part_feats(self, part_pcs, batch_length):
@@ -147,15 +175,16 @@ class JointSegmentationAlignmentModel(MatchingBaseModel):
             part_pcs_flatten = part_pcs.reshape(-1, 3).contiguous()
             for name, layer in self.tf_layers:
                 if name == "self":
-                    part_feats = (
-                        layer(
-                            part_pcs_flatten,
-                            part_feats.view(-1, self.pc_feat_dim),
-                            batch_length,
+                    with autocast(dtype=torch.float32):
+                        part_feats = (
+                            layer(
+                                part_pcs_flatten,
+                                part_feats.view(-1, self.pc_feat_dim),
+                                batch_length,
+                            )
+                            .view(B, N_sum, -1)
+                            .contiguous()
                         )
-                        .view(B, N_sum, -1)
-                        .contiguous()
-                    )
                 else:
                     part_feats = layer(part_feats)
             data_dict.update({"part_feats": part_feats})
@@ -230,7 +259,19 @@ class JointSegmentationAlignmentModel(MatchingBaseModel):
             part_feats, n_critical_pcs_sum, critical_label, B, N_, F
         )
 
-        affinity_feat = self.affinity_extractor(critical_feats.permute(0, 2, 1))
+        if critical_feats.size(1) == 0:
+            print(f"cri_feats.size(1) == 0, for part {N_}, shape: {critical_feats.shape}, critical_pcs: {n_critical_pcs_sum}")
+            # 返回与预期输出形状一致的零张量，或直接处理空情况
+            out_dict.update({
+                "ds_mat": torch.zeros(B, int(N_), int(N_), device=critical_feats.device)})
+            self.print("No critical points found. Returning empty tensor.")
+            if not self.training:
+                return out_dict.update({"perm_mat": torch.zeros_like(out_dict['ds_mat'])})
+            else:
+                return out_dict
+        else:
+            affinity_feat = self.affinity_extractor(critical_feats.permute(0, 2, 1))
+
         affinity_feat = affinity_feat.permute(0, 2, 1)
 
         affinity_feat = torch.cat(
@@ -264,7 +305,12 @@ class JointSegmentationAlignmentModel(MatchingBaseModel):
         else:
             s_ = s
 
-        mat = self.sinkhorn(s_, n_critical_pcs_sum, n_critical_pcs_sum)
+        with autocast(dtype=torch.float32):
+            mat = self.sinkhorn(s_.float(), n_critical_pcs_sum, n_critical_pcs_sum)
+        # if self.logitic_sinkhorn:
+        #     mat_logits = mat
+        #     out_dict.update({"ds_mat_logits": mat_logits})
+        #     mat = torch.exp(mat_logits)
         out_dict.update(
             {
                 "ds_mat": mat,  # [B, N_, N_]
@@ -320,7 +366,7 @@ class JointSegmentationAlignmentModel(MatchingBaseModel):
                 "cls_f1": cls_f1_score,
             }
         )
-
+        # print(torch.cuda.memory_summary(device=self.device.index, abbreviated=False))
         if self.training and self.w_mat_loss == 0:
             loss_dict.update({"loss": cls_loss})
             return loss_dict
@@ -363,11 +409,11 @@ class JointSegmentationAlignmentModel(MatchingBaseModel):
             gt_perm *= mask
 
         mat = out_dict["ds_mat"]
-
         # calc matching loss
-        mat_loss = permutation_loss(
-            mat, gt_perm, n_critical_pcs_sum, n_critical_pcs_sum
-        )
+        with autocast(enabled=False):
+            mat_loss = permutation_loss(
+                mat, gt_perm, n_critical_pcs_sum, n_critical_pcs_sum
+            )
 
         loss_dict.update(
             {
@@ -422,17 +468,23 @@ class JointSegmentationAlignmentModel(MatchingBaseModel):
 
         return loss_dict
 
-    def training_epoch_end(self, outputs):
-        if self.w_mat_loss == 0 and self.current_epoch >= self.cfg.MODEL.LOSS.mat_epoch:
+    def _update_loss_weight_by_epoch(self, epoch=-1):
+        if epoch < 0:
+            epoch = self.current_epoch
+        if self.w_mat_loss == 0 and epoch >= self.cfg.MODEL.LOSS.mat_epoch:
             self.w_mat_loss = 1.0
             print(
-                f"current_epoch={self.current_epoch}, self.w_mat_los = 1.0"
+                f"At {epoch}, self.w_mat_los = 1.0"
             )
-        if self.w_rig_loss == 0 and self.current_epoch >= self.cfg.MODEL.LOSS.rig_epoch:
+        if self.w_rig_loss == 0 and epoch >= self.cfg.MODEL.LOSS.rig_epoch:
             self.w_rig_loss = 1.0
             print(
-                f"current_epoch={self.current_epoch}, self.w_rig_loss = 1.0"
+                f"At {epoch}, self.w_rig_loss = 1.0"
             )
+
+    def training_epoch_end(self, outputs):
+        self._update_loss_weight_by_epoch()
+        torch.cuda.empty_cache()
 
     @torch.no_grad()
     def compute_label(self, part_pcs, nps, n_valid, label_thresholds):

@@ -53,7 +53,7 @@ __C.TRAIN.LR_STEP = [10, 20]
 __C.TRAIN.WARMUP_RATIO = 0.0
 
 # clip_grad
-__C.TRAIN.CLIP_GRAD = None
+__C.TRAIN.CLIP_GRAD = 1e6
 
 # beta1, beta2 for Adam Optimizer
 __C.TRAIN.beta1 = 0
@@ -107,7 +107,7 @@ __C.PARALLEL_STRATEGY = "ddp"
 __C.FP16 = False
 
 # CUDNN benchmark
-__C.CUDNN = False
+__C.CUDNN = True
 
 __C.WEIGHT_FILE = ""
 

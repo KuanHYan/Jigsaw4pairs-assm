@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric
 from torch import Tensor
+# from xformers.ops import memory_efficient_attention
 
 
 class ScaledDotProductAttention(nn.Module):

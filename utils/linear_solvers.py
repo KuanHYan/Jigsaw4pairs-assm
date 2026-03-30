@@ -6,7 +6,8 @@ import torch
 from torch import Tensor, nn
 
 
-def sinkhorn(
+# CUSTOM: output log_sinkhorn for binary_cross_entropy_with_logits
+def _log_sinkhorn(
         s: Tensor,
         nrows: Tensor = None,
         ncols: Tensor = None,
@@ -244,14 +245,31 @@ def sinkhorn(
     if transposed:
         ret_log_s = ret_log_s.transpose(1, 2)
 
-    return torch.exp(ret_log_s)
+    return ret_log_s
+
+
+def sinkhorn(
+        s: Tensor,
+        nrows: Tensor = None,
+        ncols: Tensor = None,
+        unmatchrows: Tensor = None,
+        unmatchcols: Tensor = None,
+        dummy_row: bool = False,
+        max_iter: int = 10,
+        tau: float = 1.0,
+        batched_operation: bool = False,
+) -> Tensor:
+    return torch.exp(_log_sinkhorn(s, nrows, ncols, unmatchrows,
+                                   unmatchcols, dummy_row, max_iter,
+                                   tau, batched_operation))
 
 
 class Sinkhorn(nn.Module):
-    def __init__(self, max_iter: int = 10, tau: float = 1.0):
+    def __init__(self, max_iter: int = 10, tau: float = 1.0, use_logitic: bool = False):
         super(Sinkhorn, self).__init__()
         self.max_iter = max_iter
         self.tau = tau
+        self.use_logitic = use_logitic
 
     def forward(
             self,
@@ -263,7 +281,8 @@ class Sinkhorn(nn.Module):
             dummy_row: bool = False,
             batched_operation: bool = False,
     ) -> Tensor:
-        return sinkhorn(
+        func = _log_sinkhorn if self.use_logitic else sinkhorn
+        return func(
             s,
             nrows,
             ncols,

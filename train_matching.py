@@ -49,6 +49,7 @@ def train_model(cfg):
         # This might miss some checkpoints, I would set -1 if the storage space is large enough.
         mode=cfg.CALLBACK.CHECKPOINT_MODE,
         save_last=True,
+        every_n_epochs=1
     )
     callbacks = [
         LearningRateMonitor("epoch"),
@@ -65,11 +66,15 @@ def train_model(cfg):
         callbacks=callbacks,
         benchmark=cfg.CUDNN,
         gradient_clip_val=cfg.TRAIN.CLIP_GRAD,
+        gradient_clip_algorithm="norm",
         check_val_every_n_epoch=cfg.TRAIN.VAL_EVERY,
         log_every_n_steps=10,
         profiler='simple',
         detect_anomaly=True,
+        precision="16" if cfg.FP16 else 32,  # 开启FP16混合精度训练
     )
+    # if cfg.FP16:
+    #     training_log_dict.update({'amp_level': 'O1', 'a`mp_backend': 'apex'})  # 已被弃用（Deprecated）
     if len(all_gpus) > 1:
         training_log_dict.update({
             "strategy": parallel_strategy

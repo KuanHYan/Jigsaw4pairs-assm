@@ -48,6 +48,7 @@ def test_model(cfg):
         devices=all_gpus,
         strategy="dp" if len(all_gpus) > 1 else None,
         callbacks=callbacks,
+        precision=16 if cfg.FP16 else 32,  # 开启FP16混合精度训练
     )
 
     # automatically detect existing checkpoints
